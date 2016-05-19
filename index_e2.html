@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<style>
+			body {
+				background-color: #FFF;
+				font-family:"微软雅黑";
+				overflow: hidden;
+			}
+		</style>
+		<script src="js/jquery-2.2.3.min.js"></script>
+		<link rel="stylesheet" type="text/css" href="css/themes/material/easyui.css">
+		<link rel="stylesheet" type="text/css" href="css/themes/icon.css">
+		<script type="text/javascript" src="js/jquery.easyui.min.js"></script>
+		<script src="js/three.js"></script>
+		<script src="js/three/loaders/MTLLoader.js"></script>
+		<script src="js/three/loaders/OBJLoader.js"></script>
+		<script src="js/three/controls/OrbitControls.js"></script>
+        <script src="js/PathControl.js"></script>
+		<script src="js/three/Detector.js"></script>
+		<script src="js/three/libs/stats.min.js"></script>
+		<script src="js/three/renderers/Projector.js"></script>
+        <script src="js/skybox.js"></script>
+        <script src="js/process.js"></script>
+	</head>
+	
+	<body>
+    <script>
+    $(function() { 
+        $('#sb_build').switchbutton({
+            onChange:function(checked){
+                builds.visible = checked;
+            }
+        });
+        $('#sb_pillar').switchbutton({
+            onChange:function(checked){
+                pillars.visible = checked;
+            }
+        });
+        $('#sb_road').switchbutton({
+            onChange:function(checked){
+                road.visible = checked;
+            }
+        });
+        $('#sb_tunnel').switchbutton({
+            onChange:function(checked){
+                tunnel.visible = checked;
+                roadbottom.visible = checked;
+            }
+        });
+        $('#sb_control').switchbutton({
+            onChange:function(checked){
+                switchControl(checked);
+            }
+        });			
+        $(document).click(function(e){
+        
+            //$('#w').panel('open');
+        });
+        $('#sb_process').switchbutton({
+            onChange:function(checked){
+                show_process(checked);
+            }
+        });			
+    });  
+    </script>
+    <script>
+		var container;
+		var camera, scene, renderer,cameraControls = {};
+		var pillars,builds,road,tunnels,roadbottom;
+		var pillar_material = new Array();
+		pillar_material.push(new THREE.MeshBasicMaterial( {color:0x666666,side:THREE.DoubleSide} ));
+		pillar_material.push(new THREE.MeshBasicMaterial( {color:0x00ff00,side:THREE.DoubleSide} ));
+		pillar_material.push(new THREE.MeshBasicMaterial( {color:0x0000ff,side:THREE.DoubleSide} ));
+		pillar_material.push(new THREE.MeshBasicMaterial( {color:0xffff00,side:THREE.DoubleSide} ));
+		pillar_material.push(new THREE.MeshBasicMaterial( {color:0xff0000,side:THREE.DoubleSide} ));
+		var frame = 0;
+		var red_material;
+		var red_group = new THREE.Group();
+		//var red_geom = new THREE.SphereGeometry( 12, 32, 16 );
+		var red_geom = new THREE.CylinderGeometry( 4,4,32,16 );
+        var old_pathvis = false;
+        var clock = new THREE.Clock();		
+        init();
+		animate();
+		render();
+
+
+		function init() {
+
+			container = document.createElement( 'div' );
+			document.body.appendChild( container );
+
+			camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 5, 20000 );
+			//camera.position.z = 250;
+
+			// scene
+			scene = new THREE.Scene();
+			
+			var ambient = new THREE.AmbientLight( 0xBBBBBB );
+			scene.add( ambient );
+			var directionalLight = new THREE.DirectionalLight( 0xEEEEEE, 1.0 );
+			directionalLight.position.set( 0, 400, 500 );
+			scene.add( directionalLight );
+			//material = new THREE.MeshLambertMaterial( { color: 0xffff00, specular: 0x666666, emissive: 0xff0000, shininess: 20, shading: THREE.SmoothShading, opacity: 0.9, transparent: true } ) ;
+			red_material = new THREE.MeshLambertMaterial({
+			    color: 0xff0000,
+			    emissive: 0xff0000,
+			    transparent: true,
+			    side:THREE.DoubleSide
+			});
+
+			var manager = new THREE.LoadingManager();
+			
+			manager.onProgress = function ( item, loaded, total ) {
+				console.log( item, loaded, total );
+			};
+			
+			var onProgress = function ( xhr ) {
+				if ( xhr.lengthComputable ) {
+					var percentComplete = xhr.loaded / xhr.total * 100;
+					console.log( Math.round(percentComplete, 2) + '% downloaded' );
+				}
+			};
+
+			var onError = function ( xhr ) {
+			};
+			var mtlLoader = new THREE.MTLLoader();
+			mtlLoader.setBaseUrl( 'objs/' );
+			mtlLoader.load( 'objs/build.mtl', function( materials ) {
+				materials.preload();
+				var objLoader = new THREE.OBJLoader();
+				objLoader.setMaterials( materials );
+				objLoader.load( 'objs/build.obj', function ( object ) {
+					object.children[0].material.opacity = 0.5;
+					builds = object;
+					object.name = "build";
+					scene.add(object);
+				}, onProgress, onError );
+			});
+
+			mtlLoader.load( 'objs/pillar.mtl', function( materials ) {
+				materials.preload();
+				var objLoader = new THREE.OBJLoader();
+				objLoader.setMaterials( materials );
+				objLoader.load( 'objs/pillar.obj', function ( object ) {
+					for (var i in object.children){
+						var o = object.children[i];
+						var om = o.material;
+						var og = o.geometry;
+						om.side = THREE.DoubleSide;
+						//om.emissive = new THREE.Color(0xffffff);
+						og.computeBoundingBox();
+						var ogc = og.boundingBox.center();
+						var idx = parseInt(Math.random() * 100 );
+						var info = {};
+						info.id = i;
+						info.name = o.name;
+						info.type = 2;
+						info.x = ogc.x;
+						info.y = ogc.y;
+						info.z = ogc.z;
+						o.info = info;
+						if (idx % 100 == 0) {
+							o.material = pillar_material[4];
+							var ogm = new THREE.Mesh( red_geom, red_material );
+							ogm.position.x = ogc.x;
+							ogm.position.y = ogc.y;
+							ogm.position.z = ogc.z;
+							ogm.src_pillar = o;
+							ogm.name = "red_" + o.name;
+							info.status = 4;
+							red_group.add(ogm);
+						}else {
+							idx = idx % 4;
+							info.status = idx;
+							o.material = pillar_material[idx];
+						}
+					}
+					pillars = object;
+					object.name = "pillars";
+					scene.add(red_group);
+					scene.add(object);
+				}, onProgress, onError );
+			});
+
+			mtlLoader.load( 'objs/road.mtl', function( materials ) {
+				materials.preload();
+				var objLoader = new THREE.OBJLoader();
+				objLoader.setMaterials( materials );
+				objLoader.load( 'objs/road.obj', function ( object ) {
+					road = object;
+					object.name = "road";
+					
+					scene.add(object);
+				}, onProgress, onError );
+			});
+
+			mtlLoader.load( 'objs/tunnel.mtl', function( materials ) {
+				materials.preload();
+				var objLoader = new THREE.OBJLoader();
+				objLoader.setMaterials( materials );
+				objLoader.load( 'objs/tunnel.obj', function ( object ) {
+					tunnel = object;
+					object.name = "tunnel";
+                    def_tunnel_material = object.children[0].material;
+					scene.add(object);
+				}, onProgress, onError );
+			});
+			mtlLoader.load( 'objs/roadbottom.mtl', function( materials ) {
+				materials.preload();
+				var objLoader = new THREE.OBJLoader();
+				objLoader.setMaterials( materials );
+				objLoader.load( 'objs/roadbottom.obj', function ( object ) {
+					roadbottom = object;
+					object.name = "roadbottom";
+					scene.add(object);
+				}, onProgress, onError );
+			});
+            init_skybox();
+			window.devicePixelRatio = 2;
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			//renderer.setClearColor(0xEEEEEE);
+			container.appendChild( renderer.domElement );
+            renderer.autoClear = false;
+			window.addEventListener( 'resize', onWindowResize, false );
+			window.addEventListener( 'click', onMouseDown, false );
+            
+            switchControl(false);
+			//camera.lookAt( 2000,0,-300 );
+			//camera.updateProjectionMatrix();
+			//camera.updateMatrix();
+            init_process_material();
+		}
+		
+		function onWindowResize() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+            resize_skybox();
+			renderer.setSize( window.innerWidth, window.innerHeight );
+		}
+		
+		function animate() {
+			requestAnimationFrame( animate );
+			//cameraControls.update();
+			render();
+		}
+		
+		function render() {
+			frame = frame % 20;
+			if (old_pathvis) {
+                cameraControls.update();
+                red_update();
+            }
+			red_material.opacity = parseFloat(frame++) / 20.0;
+            render_skybox(renderer,camera);
+			renderer.render( scene, camera );
+		}
+		function red_update(){
+			var cp = camera.position;
+			for(var i in red_group.children){
+				var o = red_group.children[i];
+				var op = o.position;
+				var bl = Math.sqrt(Math.pow(op.x - cp.x,2) + Math.pow(op.y - cp.y,2) + Math.pow(op.z - cp.z,2)) > 400;
+				o.visible = bl;
+			}
+		}
+		
+		function onMouseDown(event) {
+			event.preventDefault();
+//			if (event.altKey == false){
+//				return;
+//			}
+            var vector = new THREE.Vector2( ( (event.clientX ) / window.innerWidth ) * 2 - 1.01, - ( event.clientY / window.innerHeight ) * 2 + 1);
+			//var projector =new THREE.Projector();
+            //projector.unprojectVector( vector, camera );
+            //var dir = vector.sub( camera.position ).normalize();
+//            var farpoint = new THREE.Vector3(
+//            	camera.position.x + dir.x * 10000,
+//            	camera.position.y + dir.y * 10000,
+//            	camera.position.z + dir.z * 10000
+//            );
+//            var material = new THREE.LineBasicMaterial({
+//				color: 0x0000ff
+//			});
+//
+//			var geometry = new THREE.Geometry();
+//			geometry.vertices.push(
+//				new THREE.Vector3(camera.position.x,camera.position.y,camera.position.z),
+//				farpoint
+//			);
+//
+//			var line = new THREE.Line( geometry, material );
+//			scene.add( line );
+            var raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera( vector, camera );
+            //var raycaster = new THREE.Raycaster( camera.position, dir );
+			var intersects = raycaster.intersectObject( red_group,true );
+			var object = null;
+			if (intersects.length > 1) {
+				object = intersects[0].object.src_pillar;
+			} else {
+				intersects = raycaster.intersectObject( pillars,true );
+				if (intersects.length > 1) {
+					object = intersects[0].object;
+				}
+			}
+			$('#w').panel('close');
+			if (object != null) {
+				showinfo(object);
+			}
+		}
+		function showinfo(o){
+			var info = o.info;
+			$('#o_id').text(info.id);
+			$('#o_name').text(info.name);
+			$('#o_type').text(info.type);
+			$('#o_status').text(info.status);
+			$('#o_posx').text(info.x);
+			$('#o_posy').text(info.y);
+			$('#o_posz').text(info.z);
+			$('#w').panel('move',{left:event.clientX,top:event.clientY});
+			$('#w').panel('open');
+		}
+
+        function switchControl(pathvis) {
+            if (pathvis && !old_pathvis) {
+                
+                cameraControls.removeEventListener( 'change', render);
+                cameraControls.removeEventListener( 'change', red_update);
+                cameraControls.dispose();
+                cameraControls = new THREE.PathControl(camera);
+                //cameraControls.add_point(800, 10, -297);
+                //cameraControls.add_point(2630, 10, -297);
+                //cameraControls.add_point(2777, 10, -267);
+                //cameraControls.add_point(3230, 10, 34);
+                cameraControls.add_point(700, 10, -301);
+                //cameraControls.add_point(845, 10, -301);
+                cameraControls.add_point(2322, 10, -298);
+                cameraControls.add_point(2713, 10, -293);
+                cameraControls.add_point(2775, 10, -278);
+                cameraControls.add_point(2854, 10, -225);
+                cameraControls.add_point(3232, 10, 38);
+                cameraControls.add_point(3351, 10, 98);
+                cameraControls.add_point(3540, 10, 140);
+                cameraControls.duration = 60;
+                cameraControls.turnr = 45;
+                cameraControls.reset();
+            } 
+            else {
+                cameraControls = new THREE.OrbitControls( camera, renderer.document );
+                cameraControls.target.set(2000,0,-300 );
+                cameraControls.addEventListener( 'change', render );
+                cameraControls.addEventListener( 'change', red_update );
+            }
+            old_pathvis = pathvis;
+            cameraControls.update();
+        }
+        var def_tunnel_material;
+        function show_process(v) {
+            var m;
+            if (v) {
+                m = process_material;
+            } else {
+                m = def_tunnel_material;
+            }
+
+			for (var i in tunnel.children){
+                var o = tunnel.children[i];
+                o.material = m;
+			}
+        }
+	</script>
+	
+		<table style = "position:absolute;left:20px;top:20px;background: white;border-radius: 5px; padding:5px">
+		    <tr>
+		        <td>建筑: <input id = "sb_build" class="easyui-switchbutton" data-options="width:40,height:20" checked></td>
+		    </tr>
+		    <tr>
+		        <td>道路: <input id = "sb_road" class="easyui-switchbutton" data-options="width:40,height:20" checked></td>
+		    </tr>
+		    <tr>
+		        <td>隧道: <input id = "sb_tunnel" class="easyui-switchbutton" data-options="width:40,height:20" checked></td>
+		    </tr>
+		    <tr>
+		        <td>监测柱: <input id = "sb_pillar" class="easyui-switchbutton" data-options="width:40,height:20" checked></td>
+		    </tr>
+		    <tr>
+		        <td><input id = "sb_control" class="easyui-switchbutton" data-options="width:100,height:20,onText:'路径漫游',offText:'路径漫游'"></td>
+		    </tr>
+		    <tr>
+		        <td><input id = "sb_process" class="easyui-switchbutton" data-options="width:100,height:20,onText:'项目进度',offText:'项目进度'"></td>
+		    </tr>
+            </table>
+		<div id="w" class="easyui-panel" title="传感器信息" 
+			data-options="closed:true,openAnimation:'show',closable:true,style:{position:'absolute',left:450,top:250,height:400, width:400}">
+			<table style = "width:180px;height:100%">
+				<tr>
+					<td>ID：</td><td id = "o_id"></td>
+				</tr>
+				<tr>
+					<td>名称：</td><td id = "o_name"></td>
+				</tr>
+				<tr>
+					<td>类型：</td><td id = "o_type"></td>
+				</tr>
+				<tr>
+					<td>状态：</td><td id = "o_status"></td>
+				</tr>
+				<tr>
+					<td>X：</td><td id = "o_posx"></td>
+				</tr>
+				<tr>
+					<td>Y：</td><td id = "o_posy"></td>
+				</tr>
+				<tr>
+					<td>Z：</td><td id = "o_posz"></td>
+				</tr>
+				</table>
+		</div>
+	</body>
+</html>
