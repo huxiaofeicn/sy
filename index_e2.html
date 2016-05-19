@@ -68,7 +68,7 @@
     <script>
 		var container;
 		var camera, scene, renderer,cameraControls = {};
-		var pillars,builds,road,tunnels,roadbottom;
+		var pillars,builds,road,tunnels,roadbottom,click_group;
 		var pillar_material = new Array();
 		pillar_material.push(new THREE.MeshBasicMaterial( {color:0x666666,side:THREE.DoubleSide} ));
 		pillar_material.push(new THREE.MeshBasicMaterial( {color:0x00ff00,side:THREE.DoubleSide} ));
@@ -80,6 +80,8 @@
 		var red_group = new THREE.Group();
 		//var red_geom = new THREE.SphereGeometry( 12, 32, 16 );
 		var red_geom = new THREE.CylinderGeometry( 4,4,32,16 );
+		var click_group = new THREE.Group();
+		var click_material = new THREE.MeshBasicMaterial({color:0xffffff,transparent: true,opacity: 0.5});
         var old_pathvis = false;
         var clock = new THREE.Clock();		
         init();
@@ -97,7 +99,7 @@
 
 			// scene
 			scene = new THREE.Scene();
-			
+			scene.add(click_group);
 			var ambient = new THREE.AmbientLight( 0xBBBBBB );
 			scene.add( ambient );
 			var directionalLight = new THREE.DirectionalLight( 0xEEEEEE, 1.0 );
@@ -309,7 +311,16 @@
 				}
 			}
 			$('#w').panel('close');
+			click_group.children.splice(0,1);
 			if (object != null) {
+				var ogb = object.geometry.boundingBox;
+				var geometry = new THREE.BoxGeometry( ogb.max.x - ogb.min.x, ogb.max.y - ogb.min.y, ogb.max.z - ogb.min.z );
+				var ogc = ogb.center();
+				var cube = new THREE.Mesh( geometry, click_material);
+				cube.position.x = ogc.x;
+				cube.position.y = ogc.y;
+				cube.position.z = ogc.z;
+				click_group.add(cube);
 				showinfo(object);
 			}
 		}
